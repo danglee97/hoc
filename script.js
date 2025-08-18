@@ -220,9 +220,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
         if (!students[studentIndex].attendance) students[studentIndex].attendance = {};
         let dayData = students[studentIndex].attendance[dateKey] || {};
+
         dayData.lesson = lessonSelect.value;
         dayData.understanding = parseInt(understandingSlider.value);
-        dayData.note = noteTextarea.value;
+        dayData.note = noteTextarea.value.trim();
+
+        // **FIX:** If a note is being saved (i.e., has content), automatically mark the student as present.
+        if (dayData.lesson || dayData.note) {
+            dayData.present = true;
+        }
+
         students[studentIndex].attendance[dateKey] = dayData;
         renderAndSave();
     }
@@ -248,7 +255,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
                 const dayData = student.attendance ? student.attendance[dateKey] : null;
                 const isChecked = dayData?.present || false;
-                const hasNote = dayData && (dayData.lesson || dayData.note);
+                
+                // **FIX:** A more robust check for whether a note exists.
+                const hasNote = dayData && ((dayData.lesson && !lessons.find(l => l === dayData.lesson)?.disabled) || (dayData.note && dayData.note.trim() !== ''));
+
                 const dayOfWeek = new Date(currentYear, currentMonth, day).getDay();
                 const isTeachingDay = schedule[dayOfWeek];
                 if (isChecked && isTeachingDay) totalDays++;
