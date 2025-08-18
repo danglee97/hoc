@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bảng Điểm Danh & Ghi Chú</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9C%85%3C/text%3E%3C/svg%3E">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="p-4 md:p-8">
+    <!-- Main App Container -->
+    <div id="app-container" class="max-w-7xl mx-auto bg-white p-6 rounded-2xl shadow-lg">
+        <div class="text-center mb-8">
+            <div class="flex justify-center items-center gap-3 mb-2">
+                <!-- SVG Logo -->
+                <svg class="w-8 h-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0h18M12 12.75h.008v.008H12v-.008Z" />
+                </svg>
+                <h1 class="text-3xl font-bold text-gray-800">Bảng Điểm Danh & Ghi Chú</h1>
+            </div>
+            <p class="text-gray-500 mt-1">Công cụ theo dõi chuyên cần và tiến độ học tập của học sinh.</p>
+        </div>
+        
+        <!-- Controls -->
+        <div class="flex flex-wrap gap-4 items-end mb-6 bg-gray-50 p-4 rounded-lg">
+            <div class="flex-grow"><label for="student-name" class="block text-sm font-medium text-gray-700 mb-1">Tên học sinh mới</label><input type="text" id="student-name" placeholder="Ví dụ: Nguyễn Văn A" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></div>
+            <button id="add-student" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 font-semibold shadow-sm">Thêm học sinh</button>
+            <div class="flex-grow md:flex-grow-0"><label for="month-select" class="block text-sm font-medium text-gray-700 mb-1">Tháng</label><select id="month-select" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></select></div>
+            <div class="flex-grow md:flex-grow-0"><label for="year-select" class="block text-sm font-medium text-gray-700 mb-1">Năm</label><select id="year-select" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></select></div>
+            <button id="schedule-settings-btn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 font-semibold shadow-sm">Cài đặt Lịch học</button>
+        </div>
+        
+        <!-- Attendance Table -->
+        <div class="table-container rounded-lg border border-gray-200 mb-8"><table class="w-full text-sm text-left text-gray-500"><thead id="table-head" class="text-xs text-gray-700 uppercase bg-gray-100"></thead><tbody id="table-body" class="bg-white divide-y divide-gray-200"></tbody></table></div>
+        
+        <!-- Attendance Chart -->
+        <div><h2 class="text-2xl font-bold text-gray-800 mb-4">Biểu Đồ Chuyên Cần</h2><div class="flex w-full bg-gray-50 p-4 pr-0 rounded-lg border border-gray-200 h-80"><div id="chart-y-axis" class="chart-y-axis"></div><div id="chart-container" class="w-full flex items-end gap-4 overflow-x-auto relative pl-4"></div></div></div>
+    </div>
+    
+    <!-- Schedule Settings Modal -->
+    <div id="schedule-modal" class="modal-overlay"><div class="modal-content"><h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">Cài đặt Lịch học hàng tuần</h3><p class="text-sm text-gray-500 mb-6">Chọn những ngày bạn có lớp.</p><div id="schedule-days" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div><div class="mt-8 text-right"><button id="close-schedule-modal-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 font-semibold shadow-sm">Lưu & Đóng</button></div></div></div>
+    
+    <!-- Note Taking Modal -->
+    <div id="note-modal" class="modal-overlay"><div class="modal-content"><h3 class="text-lg font-medium leading-6 text-gray-900 mb-2">Ghi chú buổi học</h3><p id="note-modal-date" class="text-sm text-gray-500 mb-6"></p><div class="space-y-4"><div><label for="lesson-select" class="block text-sm font-medium text-gray-700">Bài học</label><select id="lesson-select" class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"></select></div><div><label for="understanding-slider" class="block text-sm font-medium text-gray-700">Mức độ hiểu bài: <span id="understanding-value" class="font-bold text-indigo-600">50%</span></label><input id="understanding-slider" type="range" min="0" max="100" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer mt-1"></div><div><label for="note-textarea" class="block text-sm font-medium text-gray-700">Ghi chú thêm</label><textarea id="note-textarea" rows="3" class="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 rounded-md" placeholder="Nhận xét về buổi học..."></textarea></div></div><div class="mt-8 flex justify-end gap-3"><button id="cancel-note-btn" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 font-semibold shadow-sm">Hủy</button><button id="save-note-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 font-semibold shadow-sm">Lưu Ghi Chú</button></div></div></div>
+    
+    <!-- Status Indicator -->
+    <div id="status-indicator" class="status-indicator"></div>
+    
+    <!-- Custom JavaScript -->
+    <script src="script.js" defer></script>
+</body>
+</html>
