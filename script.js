@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dayNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
     let debounceTimer;
     let selectedDay = { studentIndex: null, day: null };
-    let isInitialized = false; // Flag to ensure one-time setup
+    let isInitialized = false;
 
     // --- INITIALIZATION & LOGIN ---
     function main() {
@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const savedPassword = sessionStorage.getItem(PASSWORD_KEY);
         if (savedPassword) {
             password = savedPassword;
-            attemptLogin(true); // Attempt login with saved password
+            attemptLogin(true);
         } else {
             loginOverlay.classList.add('visible');
             loginBtn.addEventListener('click', () => attemptLogin(false));
@@ -107,7 +107,6 @@ document.addEventListener('DOMContentLoaded', () => {
             currentMonth = data.currentMonth ?? new Date().getMonth();
             currentYear = data.currentYear ?? new Date().getFullYear();
 
-            // Perform one-time setup
             if (!isInitialized) {
                 populateDateSelectors();
                 populateScheduleModal();
@@ -115,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 isInitialized = true;
             }
             
-            // Update UI with data
             monthSelect.value = currentMonth;
             yearSelect.value = currentYear;
             updateScheduleCheckboxes();
@@ -154,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1500);
     }
 
-    // --- EVENT LISTENERS (Called only once) ---
+    // --- EVENT LISTENERS ---
     function setupEventListeners() {
         addStudentBtn.addEventListener('click', addStudent);
         studentNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addStudent(); });
@@ -181,6 +179,14 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < 10; i++) yearSelect.add(new Option(startYear + i, startYear + i));
     }
     function getDaysInMonth(month, year) { return new Date(year, month + 1, 0).getDate(); }
+    
+    // **FIXED:** Standardized date key format
+    function getDateKey(year, month, day) {
+        const monthStr = String(month + 1).padStart(2, '0');
+        const dayStr = String(day).padStart(2, '0');
+        return `${year}-${monthStr}-${dayStr}`;
+    }
+
     function populateScheduleModal() {
         dayNames.forEach((name, index) => {
             scheduleDaysContainer.innerHTML += `<div class="flex items-center"><input id="day-${index}" type="checkbox" data-day-index="${index}" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"><label for="day-${index}" class="ml-2 block text-sm text-gray-900">${name}</label></div>`;
@@ -238,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.type === 'checkbox') {
             const studentIndex = parseInt(e.target.dataset.student);
             const day = parseInt(e.target.dataset.day);
-            const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+            const dateKey = getDateKey(currentYear, currentMonth, day);
             if (!students[studentIndex].attendance) students[studentIndex].attendance = {};
             let dayData = students[studentIndex].attendance[dateKey] || {};
             dayData.present = e.target.checked;
@@ -255,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+        const dateKey = getDateKey(currentYear, currentMonth, day);
         const student = students[studentIndex];
         const dayData = student.attendance[dateKey] || {};
         
@@ -272,7 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveNote() {
         const { studentIndex, day } = selectedDay;
         if (studentIndex === null || day === null) return;
-        const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+        const dateKey = getDateKey(currentYear, currentMonth, day);
         if (!students[studentIndex].attendance) students[studentIndex].attendance = {};
         let dayData = students[studentIndex].attendance[dateKey] || {};
 
@@ -306,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = document.createElement('tr'); row.className = 'hover:bg-gray-50';
             let totalDays = 0; let cells = '';
             for (let day = 1; day <= daysInMonth; day++) {
-                const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+                const dateKey = getDateKey(currentYear, currentMonth, day);
                 const dayData = student.attendance ? student.attendance[dateKey] : null;
                 const isChecked = dayData?.present || false;
                 const hasNote = dayData && ((dayData.lesson && !lessons.find(l => l === dayData.lesson)?.disabled) || (dayData.note && dayData.note.trim() !== ''));
@@ -342,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
         students.forEach(student => {
             let totalDays = 0;
             for (let day = 1; day <= daysInMonth; day++) {
-                const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
+                const dateKey = getDateKey(currentYear, currentMonth, day);
                 if (student.attendance && student.attendance[dateKey]?.present && schedule[new Date(currentYear, currentMonth, day).getDay()]) totalDays++;
             }
             const barHeight = totalDays > 0 ? (totalDays / maxAttendance) * 100 : 0;
