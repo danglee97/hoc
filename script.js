@@ -73,6 +73,19 @@ document.addEventListener('DOMContentLoaded', () => {
             students = data.students || [];
             schedule = data.schedule || { 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: true };
             lessons = data.lessons || [];
+
+            // Tải tháng và năm đã lưu, nếu có
+            if (typeof data.currentMonth === 'number' && data.currentMonth >= 0 && data.currentMonth <= 11) {
+                currentMonth = data.currentMonth;
+            }
+            if (typeof data.currentYear === 'number') {
+                currentYear = data.currentYear;
+            }
+
+            // Cập nhật dropdown để hiển thị đúng tháng/năm đã tải
+            monthSelect.value = currentMonth;
+            yearSelect.value = currentYear;
+
             updateScheduleCheckboxes();
             populateLessonSelect();
             showStatus('Tải dữ liệu thành công!');
@@ -87,7 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(debounceTimer);
         showStatus('Đang lưu...');
         debounceTimer = setTimeout(async () => {
-            const dataToSave = { students, schedule, lessons };
+            // Thêm tháng và năm hiện tại vào dữ liệu cần lưu
+            const dataToSave = { students, schedule, lessons, currentMonth, currentYear };
             try {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
@@ -163,7 +177,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAndSave() { render(); saveDataToSheet(); }
     function addStudent() { const name = studentNameInput.value.trim(); if (name && !students.some(s => s.name === name)) { students.push({ name: name, attendance: {} }); studentNameInput.value = ''; renderAndSave(); } }
     function deleteStudent(index) { if (confirm(`Bạn có chắc chắn muốn xóa học sinh "${students[index].name}"?`)) { students.splice(index, 1); renderAndSave(); } }
-    function updateDate() { currentMonth = parseInt(monthSelect.value); currentYear = parseInt(yearSelect.value); render(); }
+    function updateDate() { 
+        currentMonth = parseInt(monthSelect.value); 
+        currentYear = parseInt(yearSelect.value); 
+        renderAndSave(); // Lưu lại tháng/năm mới được chọn
+    }
     function updateSchedule(e) { if (e.target.type === 'checkbox') { const dayIndex = e.target.dataset.dayIndex; schedule[dayIndex] = e.target.checked; } }
     
     function handleTableClick(e) {
@@ -273,4 +291,3 @@ document.addEventListener('DOMContentLoaded', () => {
     window.deleteStudent = deleteStudent;
     initializeApplication();
 });
-</script>
