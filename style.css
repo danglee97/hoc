@@ -54,11 +54,29 @@ th, td {
 /* Cell Styles */
 .non-teaching-day { 
     background-color: #f8fafc; 
-    cursor: not-allowed; 
+}
+.non-teaching-day .custom-checkbox {
+    cursor: not-allowed;
 }
 .attendance-cell { 
-    cursor: pointer; 
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.2s;
 }
+.attendance-cell.selected {
+    background-color: #e0e7ff; /* indigo-100 */
+}
+.attendance-cell.selected::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 2px solid #4f46e5; /* indigo-600 */
+    border-radius: 2px;
+}
+
 
 /* Note Indicator */
 .note-indicator { 

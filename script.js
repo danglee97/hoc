@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CẤU HÌNH QUAN TRỌNG ---
-    // Dán URL Ứng dụng web từ Google Apps Script của bạn vào đây.
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVejs5-MqJeQQ5vzJIWHy3JgJI1b8gfHJ6HRU7JWLlKv0PEFcoe9QiXUT4AOAaBGvmtQ/exec'; 
     
     // DOM Elements
@@ -21,15 +20,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeScheduleModalBtn = document.getElementById('close-schedule-modal-btn');
     const scheduleDaysContainer = document.getElementById('schedule-days');
 
-    // Note Modal Elements
-    const noteModal = document.getElementById('note-modal');
-    const noteModalDate = document.getElementById('note-modal-date');
+    // Note Editor Elements
+    const notePlaceholder = document.getElementById('note-placeholder');
+    const noteEditor = document.getElementById('note-editor');
+    const noteEditorDate = document.getElementById('note-editor-date');
     const lessonSelect = document.getElementById('lesson-select');
     const understandingSlider = document.getElementById('understanding-slider');
     const understandingValue = document.getElementById('understanding-value');
     const noteTextarea = document.getElementById('note-textarea');
     const saveNoteBtn = document.getElementById('save-note-btn');
-    const cancelNoteBtn = document.getElementById('cancel-note-btn');
 
     // State
     let students = [];
@@ -39,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentYear = new Date().getFullYear();
     const dayNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
     let debounceTimer;
-    let activeNote = { studentIndex: null, day: null };
+    let selectedDay = { studentIndex: null, day: null };
 
     // --- INITIALIZATION ---
     function initializeApplication() {
@@ -54,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadDataFromSheet();
     }
 
-    // --- DATA HANDLING WITH FETCH API ---
+    // --- DATA HANDLING ---
     function showStatus(message, isError = false, duration = 2000) {
         statusIndicator.textContent = message;
         statusIndicator.style.backgroundColor = isError ? '#dc2626' : '#111827';
@@ -73,13 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
             students = data.students || [];
             schedule = data.schedule || { 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: true };
             lessons = data.lessons || [];
-
-            if (typeof data.currentMonth === 'number' && data.currentMonth >= 0 && data.currentMonth <= 11) {
-                currentMonth = data.currentMonth;
-            }
-            if (typeof data.currentYear === 'number') {
-                currentYear = data.currentYear;
-            }
+            currentMonth = data.currentMonth ?? new Date().getMonth();
+            currentYear = data.currentYear ?? new Date().getFullYear();
 
             monthSelect.value = currentMonth;
             yearSelect.value = currentYear;
@@ -98,9 +92,9 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(debounceTimer);
         showStatus('Đang lưu...');
         debounceTimer = setTimeout(async () => {
-            const dataToSave = { students, schedule, lessons, currentMonth, currentYear };
+            const dataToSave = { students, schedule, currentMonth, currentYear };
             try {
-                const response = await fetch(SCRIPT_URL, {
+                await fetch(SCRIPT_URL, {
                     method: 'POST',
                     body: JSON.stringify(dataToSave),
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -131,7 +125,6 @@ document.addEventListener('DOMContentLoaded', () => {
         understandingSlider.addEventListener('input', () => {
             understandingValue.textContent = `${understandingSlider.value}%`;
         });
-        cancelNoteBtn.addEventListener('click', () => noteModal.classList.remove('visible'));
         saveNoteBtn.addEventListener('click', saveNote);
     }
 
@@ -140,8 +133,6 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < 12; i++) monthSelect.add(new Option(`Tháng ${i + 1}`, i));
         const startYear = new Date().getFullYear() - 5;
         for (let i = 0; i < 10; i++) yearSelect.add(new Option(startYear + i, startYear + i));
-        monthSelect.value = currentMonth;
-        yearSelect.value = currentYear;
     }
     function getDaysInMonth(month, year) { return new Date(year, month + 1, 0).getDate(); }
     function populateScheduleModal() {
@@ -173,20 +164,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CORE LOGIC & RENDERING ---
     function renderAndSave() { render(); saveDataToSheet(); }
     function addStudent() { const name = studentNameInput.value.trim(); if (name && !students.some(s => s.name === name)) { students.push({ name: name, attendance: {} }); studentNameInput.value = ''; renderAndSave(); } }
-    function deleteStudent(index) { if (confirm(`Bạn có chắc chắn muốn xóa học sinh "${students[index].name}"?`)) { students.splice(index, 1); renderAndSave(); } }
-    function updateDate() { 
-        currentMonth = parseInt(monthSelect.value); 
-        currentYear = parseInt(yearSelect.value); 
-        renderAndSave();
-    }
+    function deleteStudent(index) { if (confirm(`Bạn có chắc chắn muốn xóa học sinh "${students[index].name}"?`)) { students.splice(index, 1); if(selectedDay.studentIndex === index) { selectedDay = { studentIndex: null, day: null }; } renderAndSave(); } }
+    function updateDate() { currentMonth = parseInt(monthSelect.value); currentYear = parseInt(yearSelect.value); renderAndSave(); }
     function updateSchedule(e) { if (e.target.type === 'checkbox') { const dayIndex = e.target.dataset.dayIndex; schedule[dayIndex] = e.target.checked; } }
     
     function handleTableClick(e) {
         const cell = e.target.closest('.attendance-cell');
-        if (cell && !e.target.matches('input[type="checkbox"]')) {
+        if (cell) {
             const studentIndex = parseInt(cell.dataset.student);
             const day = parseInt(cell.dataset.day);
-            openNoteModal(studentIndex, day);
+            selectedDay = { studentIndex, day };
+            render(); // Re-render to show selection highlight
+            displayNoteForSelectedDay();
         }
     }
 
@@ -203,21 +192,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function openNoteModal(studentIndex, day) {
-        activeNote = { studentIndex, day };
+    function displayNoteForSelectedDay() {
+        const { studentIndex, day } = selectedDay;
+        if (studentIndex === null || day === null) {
+            noteEditor.classList.add('hidden');
+            notePlaceholder.classList.remove('hidden');
+            return;
+        }
+
         const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
         const student = students[studentIndex];
         const dayData = student.attendance[dateKey] || {};
-        noteModalDate.textContent = `Học sinh: ${student.name} - Ngày ${day}/${currentMonth + 1}/${currentYear}`;
+        
+        noteEditorDate.textContent = `Học sinh: ${student.name} - Ngày ${day}/${currentMonth + 1}/${currentYear}`;
         lessonSelect.value = dayData.lesson || lessons.find(l => l.trim() !== '' && !l.toLowerCase().startsWith('chủ đề') && !l.toLowerCase().startsWith('---')) || '';
         understandingSlider.value = dayData.understanding || 50;
         understandingValue.textContent = `${understandingSlider.value}%`;
         noteTextarea.value = dayData.note || '';
-        noteModal.classList.add('visible');
+        
+        notePlaceholder.classList.add('hidden');
+        noteEditor.classList.remove('hidden');
     }
 
     function saveNote() {
-        const { studentIndex, day } = activeNote;
+        const { studentIndex, day } = selectedDay;
         if (studentIndex === null || day === null) return;
         const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
         if (!students[studentIndex].attendance) students[studentIndex].attendance = {};
@@ -226,11 +224,14 @@ document.addEventListener('DOMContentLoaded', () => {
         dayData.understanding = parseInt(understandingSlider.value);
         dayData.note = noteTextarea.value;
         students[studentIndex].attendance[dateKey] = dayData;
-        noteModal.classList.remove('visible');
         renderAndSave();
     }
 
-    function render() { renderTable(); renderChart(); }
+    function render() { 
+        renderTable(); 
+        renderChart(); 
+        displayNoteForSelectedDay();
+    }
     
     function renderTable() {
         const daysInMonth = getDaysInMonth(currentMonth, currentYear);
@@ -250,13 +251,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const hasNote = dayData && (dayData.lesson || dayData.note);
                 const dayOfWeek = new Date(currentYear, currentMonth, day).getDay();
                 const isTeachingDay = schedule[dayOfWeek];
-                
                 if (isChecked && isTeachingDay) totalDays++;
+                
+                const isSelected = selectedDay.studentIndex === studentIndex && selectedDay.day === day;
+                const cellClasses = isTeachingDay ? 'attendance-cell' : 'non-teaching-day';
+                const selectedClass = isSelected ? 'selected' : '';
 
-                // **FIX:** The logic to disable cells was incorrect. Now it only disables based on schedule.
-                const isDisabled = !isTeachingDay;
-
-                cells += `<td class="text-center p-2 ${isDisabled ? 'non-teaching-day' : 'attendance-cell'}" data-student="${studentIndex}" data-day="${day}"><div class="flex items-center justify-center"><input type="checkbox" class="custom-checkbox" data-student="${studentIndex}" data-day="${day}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}>${hasNote ? '<span class="note-indicator"></span>' : ''}</div></td>`;
+                cells += `<td class="text-center p-2 ${cellClasses} ${selectedClass}" data-student="${studentIndex}" data-day="${day}"><div class="flex items-center justify-center"><input type="checkbox" class="custom-checkbox" data-student="${studentIndex}" data-day="${day}" ${isChecked ? 'checked' : ''} ${!isTeachingDay ? 'disabled' : ''}>${hasNote ? '<span class="note-indicator"></span>' : ''}</div></td>`;
             }
             const deleteButton = `<button onclick="deleteStudent(${studentIndex})" class="ml-2 text-red-500 hover:text-red-700 text-lg font-bold" title="Xóa học sinh">&times;</button>`;
             row.innerHTML = `<td class="px-6 py-4 font-medium text-gray-900 sticky left-0 bg-white z-10 w-48 flex items-center justify-between">${student.name} ${deleteButton}</td>${cells}<td class="px-6 py-4 text-center font-bold text-indigo-600">${totalDays}</td>`;
