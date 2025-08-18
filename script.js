@@ -74,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
             schedule = data.schedule || { 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: true };
             lessons = data.lessons || [];
 
-            // Tải tháng và năm đã lưu, nếu có
             if (typeof data.currentMonth === 'number' && data.currentMonth >= 0 && data.currentMonth <= 11) {
                 currentMonth = data.currentMonth;
             }
@@ -82,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentYear = data.currentYear;
             }
 
-            // Cập nhật dropdown để hiển thị đúng tháng/năm đã tải
             monthSelect.value = currentMonth;
             yearSelect.value = currentYear;
 
@@ -100,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(debounceTimer);
         showStatus('Đang lưu...');
         debounceTimer = setTimeout(async () => {
-            // Thêm tháng và năm hiện tại vào dữ liệu cần lưu
             const dataToSave = { students, schedule, lessons, currentMonth, currentYear };
             try {
                 const response = await fetch(SCRIPT_URL, {
@@ -164,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const option = document.createElement('option');
             option.value = lesson;
             option.textContent = lesson;
-            if(lesson.toLowerCase().startsWith('chủ đề') || lesson.toLowerCase().startsWith('---')) {
+            if(lesson.toLowerCase().startsWith('chủ đề') || lesson.toLowerCase().startsWith('---') || lesson.trim() === '') {
                 option.disabled = true;
                 option.style.fontWeight = 'bold';
                 option.style.backgroundColor = '#f3f4f6';
@@ -180,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateDate() { 
         currentMonth = parseInt(monthSelect.value); 
         currentYear = parseInt(yearSelect.value); 
-        renderAndSave(); // Lưu lại tháng/năm mới được chọn
+        renderAndSave();
     }
     function updateSchedule(e) { if (e.target.type === 'checkbox') { const dayIndex = e.target.dataset.dayIndex; schedule[dayIndex] = e.target.checked; } }
     
@@ -212,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const student = students[studentIndex];
         const dayData = student.attendance[dateKey] || {};
         noteModalDate.textContent = `Học sinh: ${student.name} - Ngày ${day}/${currentMonth + 1}/${currentYear}`;
-        lessonSelect.value = dayData.lesson || lessons[0];
+        lessonSelect.value = dayData.lesson || lessons.find(l => l.trim() !== '' && !l.toLowerCase().startsWith('chủ đề') && !l.toLowerCase().startsWith('---')) || '';
         understandingSlider.value = dayData.understanding || 50;
         understandingValue.textContent = `${understandingSlider.value}%`;
         noteTextarea.value = dayData.note || '';
@@ -253,8 +250,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const hasNote = dayData && (dayData.lesson || dayData.note);
                 const dayOfWeek = new Date(currentYear, currentMonth, day).getDay();
                 const isTeachingDay = schedule[dayOfWeek];
+                
                 if (isChecked && isTeachingDay) totalDays++;
-                cells += `<td class="text-center p-2 ${!isTeachingDay ? 'non-teaching-day' : 'attendance-cell'}" data-student="${studentIndex}" data-day="${day}"><div class="flex items-center justify-center"><input type="checkbox" class="custom-checkbox" data-student="${studentIndex}" data-day="${day}" ${isChecked ? 'checked' : ''} ${!isTeachingDay ? 'disabled' : ''}>${hasNote ? '<span class="note-indicator"></span>' : ''}</div></td>`;
+
+                // **FIX:** The logic to disable cells was incorrect. Now it only disables based on schedule.
+                const isDisabled = !isTeachingDay;
+
+                cells += `<td class="text-center p-2 ${isDisabled ? 'non-teaching-day' : 'attendance-cell'}" data-student="${studentIndex}" data-day="${day}"><div class="flex items-center justify-center"><input type="checkbox" class="custom-checkbox" data-student="${studentIndex}" data-day="${day}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''}>${hasNote ? '<span class="note-indicator"></span>' : ''}</div></td>`;
             }
             const deleteButton = `<button onclick="deleteStudent(${studentIndex})" class="ml-2 text-red-500 hover:text-red-700 text-lg font-bold" title="Xóa học sinh">&times;</button>`;
             row.innerHTML = `<td class="px-6 py-4 font-medium text-gray-900 sticky left-0 bg-white z-10 w-48 flex items-center justify-between">${student.name} ${deleteButton}</td>${cells}<td class="px-6 py-4 text-center font-bold text-indigo-600">${totalDays}</td>`;
