@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dayNames = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
     let debounceTimer;
     let selectedDay = { studentIndex: null, day: null };
+    let isInitialized = false; // Flag to ensure one-time setup
 
     // --- INITIALIZATION & LOGIN ---
     function main() {
@@ -52,33 +53,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const savedPassword = sessionStorage.getItem(PASSWORD_KEY);
         if (savedPassword) {
             password = savedPassword;
-            loginOverlay.classList.remove('visible');
-            initializeApplication();
+            attemptLogin(true); // Attempt login with saved password
         } else {
             loginOverlay.classList.add('visible');
-            loginBtn.addEventListener('click', attemptLogin);
+            loginBtn.addEventListener('click', () => attemptLogin(false));
             passwordInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') attemptLogin();
+                if (e.key === 'Enter') attemptLogin(false);
             });
         }
     }
 
-    async function attemptLogin() {
-        const inputPassword = passwordInput.value;
-        if (!inputPassword) {
-            loginError.textContent = 'Vui lòng nhập mật khẩu.';
-            loginError.classList.remove('hidden');
-            return;
+    async function attemptLogin(isReload = false) {
+        if (!isReload) {
+            const inputPassword = passwordInput.value;
+            if (!inputPassword) {
+                loginError.textContent = 'Vui lòng nhập mật khẩu.';
+                loginError.classList.remove('hidden');
+                return;
+            }
+            password = inputPassword;
         }
+        
         loginBtn.disabled = true;
         loginBtn.textContent = 'Đang đăng nhập...';
         loginError.classList.add('hidden');
         
-        password = inputPassword;
-        await initializeApplication();
-    }
-
-    async function initializeApplication() {
         await loadDataFromSheet();
     }
 
@@ -108,14 +107,19 @@ document.addEventListener('DOMContentLoaded', () => {
             currentMonth = data.currentMonth ?? new Date().getMonth();
             currentYear = data.currentYear ?? new Date().getFullYear();
 
-            populateDateSelectors();
+            // Perform one-time setup
+            if (!isInitialized) {
+                populateDateSelectors();
+                populateScheduleModal();
+                setupEventListeners();
+                isInitialized = true;
+            }
+            
+            // Update UI with data
             monthSelect.value = currentMonth;
             yearSelect.value = currentYear;
-
-            populateScheduleModal();
             updateScheduleCheckboxes();
             populateLessonSelect();
-            setupEventListeners();
             showStatus('Tải dữ liệu thành công!');
             render();
         } catch (error) {
@@ -150,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1500);
     }
 
-    // --- EVENT LISTENERS ---
+    // --- EVENT LISTENERS (Called only once) ---
     function setupEventListeners() {
         addStudentBtn.addEventListener('click', addStudent);
         studentNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addStudent(); });
@@ -206,7 +210,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CORE LOGIC & RENDERING ---
     function renderAndSave() { render(); saveDataToSheet(); }
     
-    // **FIXED:** Ensure new students are correctly initialized.
     function addStudent() { 
         const name = studentNameInput.value.trim(); 
         if (name && !students.some(s => s.name === name)) { 
