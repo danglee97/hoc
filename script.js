@@ -1,9 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CẤU HÌNH QUAN TRỌNG ---
-    // Dán URL Ứng dụng web từ Google Apps Script của bạn vào đây.
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVejs5-MqJeQQ5vzJIWHy3JgJI1b8gfHJ6HRU7JWLlKv0PEFcoe9QiXUT4AOAaBGvmtQ/exec'; 
-    
+    const SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE'; 
+    const PASSWORD_KEY = 'attendanceAppPassword';
+
     // DOM Elements
+    const loginOverlay = document.getElementById('login-overlay');
+    const loginBtn = document.getElementById('login-btn');
+    const passwordInput = document.getElementById('password-input');
+    const loginError = document.getElementById('login-error');
     const appContainer = document.getElementById('app-container');
     const statusIndicator = document.getElementById('status-indicator');
     const studentNameInput = document.getElementById('student-name');
@@ -14,14 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.getElementById('table-body');
     const chartContainer = document.getElementById('chart-container');
     const chartYAxis = document.getElementById('chart-y-axis');
-    
-    // Schedule Modal Elements
     const scheduleSettingsBtn = document.getElementById('schedule-settings-btn');
     const scheduleModal = document.getElementById('schedule-modal');
     const closeScheduleModalBtn = document.getElementById('close-schedule-modal-btn');
     const scheduleDaysContainer = document.getElementById('schedule-days');
-
-    // Note Editor Elements
     const notePlaceholder = document.getElementById('note-placeholder');
     const noteEditor = document.getElementById('note-editor');
     const noteEditorDate = document.getElementById('note-editor-date');
@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveNoteBtn = document.getElementById('save-note-btn');
 
     // State
+    let password = '';
     let students = [];
     let schedule = {};
     let lessons = [];
@@ -41,17 +42,44 @@ document.addEventListener('DOMContentLoaded', () => {
     let debounceTimer;
     let selectedDay = { studentIndex: null, day: null };
 
-    // --- INITIALIZATION ---
-    function initializeApplication() {
+    // --- INITIALIZATION & LOGIN ---
+    function main() {
         if (SCRIPT_URL === 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE' || !SCRIPT_URL) {
             alert('Vui lòng cập nhật URL Google Apps Script trong file script.js!');
             return;
         }
-        appContainer.style.display = 'block';
-        populateDateSelectors();
-        populateScheduleModal();
-        setupEventListeners();
-        loadDataFromSheet();
+
+        const savedPassword = sessionStorage.getItem(PASSWORD_KEY);
+        if (savedPassword) {
+            password = savedPassword;
+            loginOverlay.classList.remove('visible');
+            initializeApplication();
+        } else {
+            loginOverlay.classList.add('visible');
+            loginBtn.addEventListener('click', attemptLogin);
+            passwordInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') attemptLogin();
+            });
+        }
+    }
+
+    async function attemptLogin() {
+        const inputPassword = passwordInput.value;
+        if (!inputPassword) {
+            loginError.textContent = 'Vui lòng nhập mật khẩu.';
+            loginError.classList.remove('hidden');
+            return;
+        }
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Đang đăng nhập...';
+        loginError.classList.add('hidden');
+        
+        password = inputPassword;
+        await initializeApplication();
+    }
+
+    async function initializeApplication() {
+        await loadDataFromSheet();
     }
 
     // --- DATA HANDLING ---
@@ -65,10 +93,14 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadDataFromSheet() {
         showStatus('Đang tải dữ liệu...');
         try {
-            const response = await fetch(SCRIPT_URL);
+            const response = await fetch(`${SCRIPT_URL}?password=${encodeURIComponent(password)}`);
             if (!response.ok) throw new Error(`Lỗi mạng: ${response.statusText}`);
             const data = await response.json();
             if (data.error) throw new Error(data.error);
+
+            sessionStorage.setItem(PASSWORD_KEY, password);
+            loginOverlay.classList.remove('visible');
+            appContainer.classList.remove('hidden');
 
             students = data.students || [];
             schedule = data.schedule || { 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: true };
@@ -76,16 +108,25 @@ document.addEventListener('DOMContentLoaded', () => {
             currentMonth = data.currentMonth ?? new Date().getMonth();
             currentYear = data.currentYear ?? new Date().getFullYear();
 
+            populateDateSelectors();
             monthSelect.value = currentMonth;
             yearSelect.value = currentYear;
 
+            populateScheduleModal();
             updateScheduleCheckboxes();
             populateLessonSelect();
+            setupEventListeners();
             showStatus('Tải dữ liệu thành công!');
             render();
         } catch (error) {
             console.error('Không thể tải dữ liệu:', error);
-            showStatus('Lỗi tải dữ liệu!', true, 5000);
+            showStatus('Lỗi tải dữ liệu hoặc sai mật khẩu!', true, 5000);
+            sessionStorage.removeItem(PASSWORD_KEY);
+            loginOverlay.classList.add('visible');
+            loginError.textContent = 'Mật khẩu không đúng hoặc có lỗi xảy ra.';
+            loginError.classList.remove('hidden');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Đăng nhập';
         }
     }
 
@@ -93,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(debounceTimer);
         showStatus('Đang lưu...');
         debounceTimer = setTimeout(async () => {
-            const dataToSave = { students, schedule, currentMonth, currentYear };
+            const dataToSave = { students, schedule, currentMonth, currentYear, password };
             try {
                 await fetch(SCRIPT_URL, {
                     method: 'POST',
@@ -164,7 +205,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- CORE LOGIC & RENDERING ---
     function renderAndSave() { render(); saveDataToSheet(); }
-    function addStudent() { const name = studentNameInput.value.trim(); if (name && !students.some(s => s.name === name)) { students.push({ name: name, attendance: {} }); studentNameInput.value = ''; renderAndSave(); } }
+    
+    // **FIXED:** Ensure new students are correctly initialized.
+    function addStudent() { 
+        const name = studentNameInput.value.trim(); 
+        if (name && !students.some(s => s.name === name)) { 
+            students.push({ name: name, attendance: {} }); 
+            studentNameInput.value = ''; 
+            renderAndSave(); 
+        } 
+    }
+
     function deleteStudent(index) { if (confirm(`Bạn có chắc chắn muốn xóa học sinh "${students[index].name}"?`)) { students.splice(index, 1); if(selectedDay.studentIndex === index) { selectedDay = { studentIndex: null, day: null }; } renderAndSave(); } }
     function updateDate() { currentMonth = parseInt(monthSelect.value); currentYear = parseInt(yearSelect.value); renderAndSave(); }
     function updateSchedule(e) { if (e.target.type === 'checkbox') { const dayIndex = e.target.dataset.dayIndex; schedule[dayIndex] = e.target.checked; } }
@@ -195,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function displayNoteForSelectedDay() {
         const { studentIndex, day } = selectedDay;
-        if (studentIndex === null || day === null) {
+        if (studentIndex === null || day === null || !students[studentIndex]) {
             noteEditor.classList.add('hidden');
             notePlaceholder.classList.remove('hidden');
             return;
@@ -295,15 +346,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const barColumn = document.createElement('div'); 
             barColumn.className = 'flex flex-col items-center flex-shrink-0 w-20 text-center z-10 h-full justify-end';
             
-            // **FIXED HTML STRUCTURE FOR CHART BAR AND LABEL**
             barColumn.innerHTML = `
                 <div class="bar-wrapper w-12 h-full relative flex items-end justify-center">
-                    <!-- The number label, positioned absolutely relative to the wrapper -->
                     <div class="absolute left-1/2 -translate-x-1/2 font-bold text-indigo-600 pointer-events-none transition-opacity" 
                          style="bottom: calc(${barHeight}% + 0.25rem); opacity: ${totalDays > 0 ? 1 : 0};">
                         ${totalDays}
                     </div>
-                    <!-- The bar itself -->
                     <div class="chart-bar w-full bg-gradient-to-t from-indigo-500 to-purple-600 hover:opacity-90 rounded-t-md" 
                          style="height: ${barHeight}%;">
                         <div class="tooltip">${student.name}: ${totalDays} buổi</div>
@@ -316,5 +364,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     window.deleteStudent = deleteStudent;
-    initializeApplication();
+    main();
 });
