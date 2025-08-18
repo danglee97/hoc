@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CẤU HÌNH QUAN TRỌNG ---
+    // Dán URL Ứng dụng web từ Google Apps Script của bạn vào đây.
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVejs5-MqJeQQ5vzJIWHy3JgJI1b8gfHJ6HRU7JWLlKv0PEFcoe9QiXUT4AOAaBGvmtQ/exec'; 
     
     // DOM Elements
@@ -174,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const studentIndex = parseInt(cell.dataset.student);
             const day = parseInt(cell.dataset.day);
             selectedDay = { studentIndex, day };
-            render(); // Re-render to show selection highlight
+            render();
             displayNoteForSelectedDay();
         }
     }
@@ -225,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
         dayData.understanding = parseInt(understandingSlider.value);
         dayData.note = noteTextarea.value.trim();
 
-        // **FIX:** If a note is being saved (i.e., has content), automatically mark the student as present.
         if (dayData.lesson || dayData.note) {
             dayData.present = true;
         }
@@ -255,10 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dateKey = `${currentYear}-${currentMonth + 1}-${day}`;
                 const dayData = student.attendance ? student.attendance[dateKey] : null;
                 const isChecked = dayData?.present || false;
-                
-                // **FIX:** A more robust check for whether a note exists.
                 const hasNote = dayData && ((dayData.lesson && !lessons.find(l => l === dayData.lesson)?.disabled) || (dayData.note && dayData.note.trim() !== ''));
-
                 const dayOfWeek = new Date(currentYear, currentMonth, day).getDay();
                 const isTeachingDay = schedule[dayOfWeek];
                 if (isChecked && isTeachingDay) totalDays++;
@@ -295,8 +292,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (student.attendance && student.attendance[dateKey]?.present && schedule[new Date(currentYear, currentMonth, day).getDay()]) totalDays++;
             }
             const barHeight = totalDays > 0 ? (totalDays / maxAttendance) * 100 : 0;
-            const barColumn = document.createElement('div'); barColumn.className = 'flex flex-col items-center flex-shrink-0 w-20 text-center z-10 h-full justify-end';
-            barColumn.innerHTML = `<div class="bar-wrapper w-12 h-full relative flex items-end justify-center"><div class="chart-bar w-full bg-gradient-to-t from-indigo-500 to-purple-600 hover:opacity-90 rounded-t-md" style="height: ${barHeight}%;"><div class="tooltip">${student.name}: ${totalDays} buổi</div><div class="absolute -top-6 left-1/2 -translate-x-1/2 font-bold text-indigo-600">${totalDays}</div></div></div><div class="text-xs font-medium text-gray-600 mt-2 truncate w-full">${student.name}</div>`;
+            const barColumn = document.createElement('div'); 
+            barColumn.className = 'flex flex-col items-center flex-shrink-0 w-20 text-center z-10 h-full justify-end';
+            
+            // **FIXED HTML STRUCTURE FOR CHART BAR AND LABEL**
+            barColumn.innerHTML = `
+                <div class="bar-wrapper w-12 h-full relative flex items-end justify-center">
+                    <!-- The number label, positioned absolutely relative to the wrapper -->
+                    <div class="absolute left-1/2 -translate-x-1/2 font-bold text-indigo-600 pointer-events-none transition-opacity" 
+                         style="bottom: calc(${barHeight}% + 0.25rem); opacity: ${totalDays > 0 ? 1 : 0};">
+                        ${totalDays}
+                    </div>
+                    <!-- The bar itself -->
+                    <div class="chart-bar w-full bg-gradient-to-t from-indigo-500 to-purple-600 hover:opacity-90 rounded-t-md" 
+                         style="height: ${barHeight}%;">
+                        <div class="tooltip">${student.name}: ${totalDays} buổi</div>
+                    </div>
+                </div>
+                <div class="text-xs font-medium text-gray-600 mt-2 truncate w-full">${student.name}</div>
+            `;
             chartContainer.appendChild(barColumn);
         });
     }
