@@ -133,6 +133,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!selectedKhoi || !selectedLop) {
             tableBody.innerHTML = `<tr><td colspan="33" class="text-center py-8 text-gray-500">Vui lòng chọn khối và lớp để xem dữ liệu.</td></tr>`;
             chartContainer.innerHTML = `<p class="w-full text-center text-gray-500">Biểu đồ sẽ hiển thị ở đây.</p>`;
+            students = []; // Clear students array
+            render();
             return;
         }
         showStatus('Đang tải dữ liệu lớp...');
@@ -207,28 +209,47 @@ document.addEventListener('DOMContentLoaded', () => {
         handleKhoiChange(); // Trigger to populate lopSelect
     }
 
+    // --- UPDATED LOGIC ---
     function handleKhoiChange() {
         selectedKhoi = khoiSelect.value;
-        lopSelect.innerHTML = '<option value="">-- Chọn Lớp --</option>';
+        lopSelect.innerHTML = '<option value="">-- Chọn Lớp --</option>'; // Reset dropdown
         if (!selectedKhoi) {
             selectedLop = '';
-            loadDataForClass();
+            loadDataForClass(); // Clear table if no grade is selected
             return;
         }
-        // Find all classes that have a schedule configured
+
+        // Trích xuất số từ tên khối (ví dụ: "5" từ "Khối 5")
+        const gradeNumberMatch = selectedKhoi.match(/\d+/);
+        if (!gradeNumberMatch) {
+            lopSelect.innerHTML = '<option value="">-- Chưa có lớp --</option>';
+            handleLopChange();
+            return;
+        }
+        const gradeNumber = gradeNumberMatch[0];
+
         const availableLops = Object.keys(classConfigs);
-        // A simple way to associate lop with khoi is by name, e.g., 'Lớp 6A1' belongs to 'Khối 6'
-        const filteredLops = availableLops.filter(lop => lop.includes(selectedKhoi.match(/\d+/)?.[0] || ''));
+        
+        // Logic lọc lớp chính xác hơn: trích xuất số từ tên lớp và so sánh
+        const filteredLops = availableLops.filter(lop => {
+            const classNumberMatch = lop.match(/\d+/);
+            if (!classNumberMatch) return false;
+            
+            // So sánh trực tiếp số của khối và số của lớp
+            return classNumberMatch[0] === gradeNumber;
+        });
         
         if (filteredLops.length > 0) {
             filteredLops.forEach(lop => lopSelect.add(new Option(lop, lop)));
-            lopSelect.value = filteredLops[0];
+            // Tự động chọn lớp đầu tiên trong danh sách đã lọc
+            lopSelect.value = filteredLops[0]; 
         } else {
-             // You might want to allow creating a new class here
             lopSelect.innerHTML = '<option value="">-- Chưa có lớp --</option>';
         }
+        // Tải dữ liệu cho lớp được chọn (hoặc xoá dữ liệu nếu không có lớp nào)
         handleLopChange();
     }
+
 
     function handleLopChange() {
         selectedLop = lopSelect.value;
@@ -301,7 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.type === 'checkbox') {
             const dayIndex = e.target.dataset.dayIndex;
             schedule[dayIndex] = e.target.checked;
-            // The save will happen when the modal is closed
         }
     }
 
