@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- CẤU HÌNH QUAN TRỌNG ---
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVejs5-MqJeQQ5vzJIWHy3JgJI1b8gfHJ6HRU7JWLlKv0PEFcoe9QiXUT4AOAaBGvmtQ/exec'; 
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVejs5-MqJeQQ5vzJIWHy3JgJI1b8gfHJ6HRU7JWLlKv0PEFcoe9QiXUT4AOAaBGvmtQ/exec';
     const PASSWORD_KEY = 'attendanceAppPassword';
 
     // DOM Elements
@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginError = document.getElementById('login-error');
     const appContainer = document.getElementById('app-container');
     const statusIndicator = document.getElementById('status-indicator');
+    const khoiSelect = document.getElementById('khoi-select');
+    const lopSelect = document.getElementById('lop-select');
     const studentNameInput = document.getElementById('student-name');
     const addStudentBtn = document.getElementById('add-student');
     const monthSelect = document.getElementById('month-select');
@@ -33,6 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // State
     let password = '';
+    let khoiList = [];
+    let classConfigs = {};
+    let selectedKhoi = '';
+    let selectedLop = '';
     let students = [];
     let schedule = {};
     let lessons = [];
@@ -49,13 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Vui lòng cập nhật URL Google Apps Script trong file script.js!');
             return;
         }
-
         const savedPassword = sessionStorage.getItem(PASSWORD_KEY);
         if (savedPassword) {
             password = savedPassword;
             attemptLogin(true);
         } else {
             loginOverlay.classList.add('visible');
+            passwordInput.focus();
             loginBtn.addEventListener('click', () => attemptLogin(false));
             passwordInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') attemptLogin(false);
@@ -73,12 +79,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             password = inputPassword;
         }
-        
         loginBtn.disabled = true;
         loginBtn.textContent = 'Đang đăng nhập...';
         loginError.classList.add('hidden');
-        
-        await loadDataFromSheet();
+        await loadInitialData();
     }
 
     // --- DATA HANDLING ---
@@ -89,10 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => statusIndicator.classList.remove('show'), duration);
     }
 
-    async function loadDataFromSheet() {
-        showStatus('Đang tải dữ liệu...');
+    async function loadInitialData() {
+        showStatus('Đang tải cấu hình...');
         try {
-            const response = await fetch(`${SCRIPT_URL}?password=${encodeURIComponent(password)}`);
+            const response = await fetch(`${SCRIPT_URL}?password=${encodeURIComponent(password)}&action=getInitialData`);
             if (!response.ok) throw new Error(`Lỗi mạng: ${response.statusText}`);
             const data = await response.json();
             if (data.error) throw new Error(data.error);
@@ -100,12 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
             sessionStorage.setItem(PASSWORD_KEY, password);
             loginOverlay.classList.remove('visible');
             appContainer.classList.remove('hidden');
-
-            students = data.students || [];
-            schedule = data.schedule || { 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: true };
-            lessons = data.lessons || [];
-            currentMonth = data.currentMonth ?? new Date().getMonth();
-            currentYear = data.currentYear ?? new Date().getFullYear();
+            
+            khoiList = data.khoiList || [];
+            classConfigs = data.classConfigs || {};
 
             if (!isInitialized) {
                 populateDateSelectors();
@@ -113,16 +114,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 setupEventListeners();
                 isInitialized = true;
             }
-            
-            monthSelect.value = currentMonth;
-            yearSelect.value = currentYear;
-            updateScheduleCheckboxes();
-            populateLessonSelect();
-            showStatus('Tải dữ liệu thành công!');
-            render();
+
+            populateKhoiSelect();
+            showStatus('Tải cấu hình thành công!');
         } catch (error) {
-            console.error('Không thể tải dữ liệu:', error);
-            showStatus('Lỗi tải dữ liệu hoặc sai mật khẩu!', true, 5000);
+            console.error('Không thể tải dữ liệu ban đầu:', error);
+            showStatus('Lỗi tải cấu hình hoặc sai mật khẩu!', true, 5000);
             sessionStorage.removeItem(PASSWORD_KEY);
             loginOverlay.classList.add('visible');
             loginError.textContent = 'Mật khẩu không đúng hoặc có lỗi xảy ra.';
@@ -132,11 +129,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function loadDataForClass() {
+        if (!selectedKhoi || !selectedLop) {
+            tableBody.innerHTML = `<tr><td colspan="33" class="text-center py-8 text-gray-500">Vui lòng chọn khối và lớp để xem dữ liệu.</td></tr>`;
+            chartContainer.innerHTML = `<p class="w-full text-center text-gray-500">Biểu đồ sẽ hiển thị ở đây.</p>`;
+            return;
+        }
+        showStatus('Đang tải dữ liệu lớp...');
+        try {
+            const response = await fetch(`${SCRIPT_URL}?password=${encodeURIComponent(password)}&action=getClassData&khoi=${encodeURIComponent(selectedKhoi)}&lop=${encodeURIComponent(selectedLop)}`);
+            if (!response.ok) throw new Error(`Lỗi mạng: ${response.statusText}`);
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+
+            students = data.students || [];
+            schedule = data.schedule || { 0: true, 1: false, 2: false, 3: false, 4: false, 5: false, 6: true };
+            lessons = data.lessons || [];
+
+            updateScheduleCheckboxes();
+            populateLessonSelect();
+            showStatus('Tải dữ liệu thành công!');
+            render();
+        } catch (error) {
+            console.error('Không thể tải dữ liệu lớp:', error);
+            showStatus('Lỗi khi tải dữ liệu lớp!', true, 5000);
+        }
+    }
+    
     function saveDataToSheet() {
+        if (!selectedKhoi || !selectedLop) return;
         clearTimeout(debounceTimer);
         showStatus('Đang lưu...');
         debounceTimer = setTimeout(async () => {
-            const dataToSave = { students, schedule, currentMonth, currentYear, password };
+            const dataToSave = { password, khoi: selectedKhoi, lop: selectedLop, students, schedule };
             try {
                 await fetch(SCRIPT_URL, {
                     method: 'POST',
@@ -144,26 +169,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     mode: 'no-cors'
                 });
-                 showStatus('Đã lưu vào Google Sheet!');
+                showStatus('Đã lưu vào Google Sheet!');
             } catch (error) {
                 console.error('Không thể lưu dữ liệu:', error);
                 showStatus('Lỗi khi lưu!', true, 5000);
             }
         }, 1500);
     }
-
+    
     // --- EVENT LISTENERS ---
     function setupEventListeners() {
+        khoiSelect.addEventListener('change', handleKhoiChange);
+        lopSelect.addEventListener('change', handleLopChange);
         addStudentBtn.addEventListener('click', addStudent);
         studentNameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addStudent(); });
-        monthSelect.addEventListener('change', updateDate);
-        yearSelect.addEventListener('change', updateDate);
+        monthSelect.addEventListener('change', () => { currentMonth = parseInt(monthSelect.value); render(); });
+        yearSelect.addEventListener('change', () => { currentYear = parseInt(yearSelect.value); render(); });
         tableBody.addEventListener('click', handleTableClick);
         tableBody.addEventListener('change', handleCheckboxChange);
         scheduleSettingsBtn.addEventListener('click', () => scheduleModal.classList.add('visible'));
         closeScheduleModalBtn.addEventListener('click', () => {
             scheduleModal.classList.remove('visible');
-            renderAndSave();
+            saveDataToSheet(); // Save schedule immediately
+            render();
         });
         scheduleDaysContainer.addEventListener('change', updateSchedule);
         understandingSlider.addEventListener('input', () => {
@@ -172,15 +200,49 @@ document.addEventListener('DOMContentLoaded', () => {
         saveNoteBtn.addEventListener('click', saveNote);
     }
 
-    // --- UI & DATE HELPERS ---
+    // --- UI & STATE HELPERS ---
+    function populateKhoiSelect() {
+        khoiSelect.innerHTML = '<option value="">-- Chọn Khối --</option>';
+        khoiList.forEach(khoi => khoiSelect.add(new Option(khoi, khoi)));
+        handleKhoiChange(); // Trigger to populate lopSelect
+    }
+
+    function handleKhoiChange() {
+        selectedKhoi = khoiSelect.value;
+        lopSelect.innerHTML = '<option value="">-- Chọn Lớp --</option>';
+        if (!selectedKhoi) {
+            selectedLop = '';
+            loadDataForClass();
+            return;
+        }
+        // Find all classes that have a schedule configured
+        const availableLops = Object.keys(classConfigs);
+        // A simple way to associate lop with khoi is by name, e.g., 'Lớp 6A1' belongs to 'Khối 6'
+        const filteredLops = availableLops.filter(lop => lop.includes(selectedKhoi.match(/\d+/)?.[0] || ''));
+        
+        if (filteredLops.length > 0) {
+            filteredLops.forEach(lop => lopSelect.add(new Option(lop, lop)));
+            lopSelect.value = filteredLops[0];
+        } else {
+             // You might want to allow creating a new class here
+            lopSelect.innerHTML = '<option value="">-- Chưa có lớp --</option>';
+        }
+        handleLopChange();
+    }
+
+    function handleLopChange() {
+        selectedLop = lopSelect.value;
+        loadDataForClass();
+    }
+
     function populateDateSelectors() {
         for (let i = 0; i < 12; i++) monthSelect.add(new Option(`Tháng ${i + 1}`, i));
         const startYear = new Date().getFullYear() - 5;
         for (let i = 0; i < 10; i++) yearSelect.add(new Option(startYear + i, startYear + i));
+        monthSelect.value = currentMonth;
+        yearSelect.value = currentYear;
     }
-    function getDaysInMonth(month, year) { return new Date(year, month + 1, 0).getDate(); }
-    
-    // **FIXED:** Standardized date key format
+
     function getDateKey(year, month, day) {
         const monthStr = String(month + 1).padStart(2, '0');
         const dayStr = String(day).padStart(2, '0');
@@ -192,19 +254,21 @@ document.addEventListener('DOMContentLoaded', () => {
             scheduleDaysContainer.innerHTML += `<div class="flex items-center"><input id="day-${index}" type="checkbox" data-day-index="${index}" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"><label for="day-${index}" class="ml-2 block text-sm text-gray-900">${name}</label></div>`;
         });
     }
+
     function updateScheduleCheckboxes() {
         for (let i = 0; i < 7; i++) {
             const checkbox = document.getElementById(`day-${i}`);
-            if (checkbox) checkbox.checked = schedule[i];
+            if (checkbox) checkbox.checked = !!schedule[i];
         }
     }
+
     function populateLessonSelect() {
         lessonSelect.innerHTML = '';
         lessons.forEach(lesson => {
             const option = document.createElement('option');
             option.value = lesson;
             option.textContent = lesson;
-            if(lesson.toLowerCase().startsWith('chủ đề') || lesson.toLowerCase().startsWith('---') || lesson.trim() === '') {
+            if(!lesson || lesson.toLowerCase().startsWith('chủ đề') || lesson.toLowerCase().startsWith('---') || lesson.trim() === '') {
                 option.disabled = true;
                 option.style.fontWeight = 'bold';
                 option.style.backgroundColor = '#f3f4f6';
@@ -214,21 +278,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- CORE LOGIC & RENDERING ---
-    function renderAndSave() { render(); saveDataToSheet(); }
-    
-    function addStudent() { 
-        const name = studentNameInput.value.trim(); 
-        if (name && !students.some(s => s.name === name)) { 
-            students.push({ name: name, attendance: {} }); 
-            studentNameInput.value = ''; 
-            renderAndSave(); 
-        } 
+    function addStudent() {
+        const name = studentNameInput.value.trim();
+        if (name && !students.some(s => s.name === name)) {
+            students.push({ name: name, attendance: {} });
+            studentNameInput.value = '';
+            renderAndSave();
+        }
     }
 
-    function deleteStudent(index) { if (confirm(`Bạn có chắc chắn muốn xóa học sinh "${students[index].name}"?`)) { students.splice(index, 1); if(selectedDay.studentIndex === index) { selectedDay = { studentIndex: null, day: null }; } renderAndSave(); } }
-    function updateDate() { currentMonth = parseInt(monthSelect.value); currentYear = parseInt(yearSelect.value); renderAndSave(); }
-    function updateSchedule(e) { if (e.target.type === 'checkbox') { const dayIndex = e.target.dataset.dayIndex; schedule[dayIndex] = e.target.checked; } }
-    
+    function deleteStudent(index) {
+        if (confirm(`Bạn có chắc chắn muốn xóa học sinh "${students[index].name}"?`)) {
+            students.splice(index, 1);
+            if (selectedDay.studentIndex === index) {
+                selectedDay = { studentIndex: null, day: null };
+            }
+            renderAndSave();
+        }
+    }
+
+    function updateSchedule(e) {
+        if (e.target.type === 'checkbox') {
+            const dayIndex = e.target.dataset.dayIndex;
+            schedule[dayIndex] = e.target.checked;
+            // The save will happen when the modal is closed
+        }
+    }
+
     function handleTableClick(e) {
         const cell = e.target.closest('.attendance-cell');
         if (cell) {
@@ -236,7 +312,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const day = parseInt(cell.dataset.day);
             selectedDay = { studentIndex, day };
             render();
-            displayNoteForSelectedDay();
         }
     }
 
@@ -252,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderAndSave();
         }
     }
-    
+
     function displayNoteForSelectedDay() {
         const { studentIndex, day } = selectedDay;
         if (studentIndex === null || day === null || !students[studentIndex]) {
@@ -264,13 +339,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateKey = getDateKey(currentYear, currentMonth, day);
         const student = students[studentIndex];
         const dayData = student.attendance[dateKey] || {};
-        
+
         noteEditorDate.textContent = `Học sinh: ${student.name} - Ngày ${day}/${currentMonth + 1}/${currentYear}`;
-        lessonSelect.value = dayData.lesson || lessons.find(l => l.trim() !== '' && !l.toLowerCase().startsWith('chủ đề') && !l.toLowerCase().startsWith('---')) || '';
+        lessonSelect.value = dayData.lesson || lessons.find(l => l && !l.disabled) || '';
         understandingSlider.value = dayData.understanding || 50;
         understandingValue.textContent = `${understandingSlider.value}%`;
         noteTextarea.value = dayData.note || '';
-        
+
         notePlaceholder.classList.add('hidden');
         noteEditor.classList.remove('hidden');
     }
@@ -294,19 +369,25 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAndSave();
     }
 
-    function render() { 
-        renderTable(); 
-        renderChart(); 
+    function render() {
+        if (!selectedLop) return;
+        renderTable();
+        renderChart();
         displayNoteForSelectedDay();
     }
     
+    function renderAndSave() {
+        render();
+        saveDataToSheet();
+    }
+
     function renderTable() {
-        const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         tableHead.innerHTML = ''; tableBody.innerHTML = '';
         const headerRow = document.createElement('tr');
         headerRow.innerHTML = `<th scope="col" class="px-6 py-3 sticky left-0 bg-gray-100 z-10 w-48">Học sinh</th>${Array.from({ length: daysInMonth }, (_, i) => `<th scope="col" class="px-4 py-3 text-center">${i + 1}</th>`).join('')}<th scope="col" class="px-6 py-3 text-center font-bold">Tổng</th>`;
         tableHead.appendChild(headerRow);
-        if (students.length === 0) { tableBody.innerHTML = `<tr><td colspan="${daysInMonth + 2}" class="text-center py-8 text-gray-500">Chưa có học sinh nào.</td></tr>`; return; }
+        if (students.length === 0) { tableBody.innerHTML = `<tr><td colspan="${daysInMonth + 2}" class="text-center py-8 text-gray-500">Chưa có học sinh nào trong lớp này.</td></tr>`; return; }
         
         students.forEach((student, studentIndex) => {
             const row = document.createElement('tr'); row.className = 'hover:bg-gray-50';
@@ -326,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 cells += `<td class="text-center p-2 ${cellClasses} ${selectedClass}" data-student="${studentIndex}" data-day="${day}"><div class="flex items-center justify-center"><input type="checkbox" class="custom-checkbox" data-student="${studentIndex}" data-day="${day}" ${isChecked ? 'checked' : ''} ${!isTeachingDay ? 'disabled' : ''}>${hasNote ? '<span class="note-indicator"></span>' : ''}</div></td>`;
             }
-            const deleteButton = `<button onclick="deleteStudent(${studentIndex})" class="ml-2 text-red-500 hover:text-red-700 text-lg font-bold" title="Xóa học sinh">&times;</button>`;
+            const deleteButton = `<button onclick="window.deleteStudent(${studentIndex})" class="ml-2 text-red-500 hover:text-red-700 text-lg font-bold" title="Xóa học sinh">&times;</button>`;
             row.innerHTML = `<td class="px-6 py-4 font-medium text-gray-900 sticky left-0 bg-white z-10 w-48 flex items-center justify-between">${student.name} ${deleteButton}</td>${cells}<td class="px-6 py-4 text-center font-bold text-indigo-600">${totalDays}</td>`;
             tableBody.appendChild(row);
         });
@@ -335,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderChart() {
         chartContainer.innerHTML = ''; chartYAxis.innerHTML = '';
         if (students.length === 0) { chartContainer.innerHTML = `<p class="w-full text-center text-gray-500">Biểu đồ sẽ hiển thị ở đây.</p>`; return; }
-        let maxTeachingDays = 0; const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+        let maxTeachingDays = 0; const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         for (let day = 1; day <= daysInMonth; day++) { if (schedule[new Date(currentYear, currentMonth, day).getDay()]) maxTeachingDays++; }
         const maxAttendance = Math.max(maxTeachingDays, 1);
         const gridLineCount = 5;
